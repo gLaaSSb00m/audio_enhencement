@@ -7,6 +7,9 @@
   const audioEl = $('#audio');
   const playBtn = $('#playBtn');
   const pauseBtn = $('#pauseBtn');
+  const recordBtn = document.querySelector('#recordBtn');
+  const stopRecordBtn = document.querySelector('#stopRecordBtn');
+  const recordStatus = document.querySelector('#recordStatus');
   const visualizer = $('#visualizer');
   const fileMeta = $('#fileMeta');
   const enhanceBtn = $('#enhanceBtn');
@@ -25,6 +28,11 @@
   let audioCtx; let sourceNode; let analyser; let dataArray; let rafId;
   let currentFile; let currentObjectUrl; let enhancedObjectUrl;
   let abortController = null;
+  let mediaStream = null;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let micAnalyser = null; // reuse visualizer for mic when recording
+  let micSource = null;
 
   function setStatus(text) { statusEl.textContent = text; }
   function setBusy(busy) {
@@ -61,6 +69,72 @@
   // Playback controls
   playBtn.addEventListener('click', () => audioEl.play());
   pauseBtn.addEventListener('click', () => audioEl.pause());
+
+  // Recording controls
+  recordBtn.addEventListener('click', async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia not supported');
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm' });
+
+      // Visualize mic input
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!audioCtx) audioCtx = new Ctx();
+      micAnalyser = audioCtx.createAnalyser();
+      micAnalyser.fftSize = 2048;
+      micSource = audioCtx.createMediaStreamSource(mediaStream);
+      micSource.connect(micAnalyser);
+
+      recordBtn.disabled = true;
+      stopRecordBtn.disabled = false;
+      recordStatus.textContent = 'Recording...';
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        try {
+          const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+          const file = new File([blob], 'recording.webm', { type: 'audio/webm' });
+          currentFile = file;
+          fileMeta.textContent = `${file.name} • ${(file.size / (1024*1024)).toFixed(2)} MB`;
+          playBtn.disabled = false;
+          pauseBtn.disabled = false;
+          enhanceBtn.disabled = false;
+          resetEnhanced();
+
+          if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+          currentObjectUrl = URL.createObjectURL(blob);
+          audioEl.src = currentObjectUrl;
+        } finally {
+          // cleanup mic resources
+          if (micSource) try { micSource.disconnect(); } catch {}
+          micSource = null;
+          micAnalyser = null;
+          if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); }
+          mediaStream = null;
+          recordBtn.disabled = false;
+          stopRecordBtn.disabled = true;
+          recordStatus.textContent = 'Mic idle';
+        }
+      };
+
+      mediaRecorder.start();
+      // draw mic waveform
+      drawMic();
+    } catch (err) {
+      console.error(err);
+      recordStatus.textContent = err?.message || 'Mic error';
+    }
+  });
+
+  stopRecordBtn.addEventListener('click', () => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+    }
+  });
 
   // Visualizer init
   function ensureAudioGraph() {
@@ -100,6 +174,38 @@
     ctx.stroke();
 
     rafId = requestAnimationFrame(draw);
+  }
+
+  function drawMic() {
+    if (!micAnalyser) return;
+    const ctx2 = visualizer.getContext('2d');
+    const { width, height } = visualizer;
+    const micData = new Uint8Array(micAnalyser.frequencyBinCount);
+
+    function loop() {
+      if (!micAnalyser) return; // stopped
+      ctx2.clearRect(0, 0, width, height);
+      ctx2.fillStyle = '#0a0f1e';
+      ctx2.fillRect(0, 0, width, height);
+
+      micAnalyser.getByteTimeDomainData(micData);
+      ctx2.lineWidth = 2;
+      ctx2.strokeStyle = '#22c55e'; // green for mic
+      ctx2.beginPath();
+      const sliceWidth = width * 1.0 / micData.length;
+      let x = 0;
+      for (let i = 0; i < micData.length; i++) {
+        const v = micData[i] / 128.0;
+        const y = v * height / 2;
+        if (i === 0) ctx2.moveTo(x, y); else ctx2.lineTo(x, y);
+        x += sliceWidth;
+      }
+      ctx2.lineTo(width, height / 2);
+      ctx2.stroke();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  }
   }
 
   audioEl.addEventListener('play', async () => {
