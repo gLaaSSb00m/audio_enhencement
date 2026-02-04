@@ -59,8 +59,8 @@
         </div>
         <div class="col" style="gap: 6px;">
         <progress id="progress" value="0" max="1" style="width: 100%; display: none;"></progress>
-        <div id="processingBar" style="display:none; width:100%; height:10px; background:#111827; border:1px solid #1f2937; border-radius:6px; overflow:hidden;">
-        <div id="processingInner" style="width:0%; height:100%; background:#60a5fa; transition: width 0.3s ease;"></div>
+        <div id="processingBar" class="processing-bar" style="display:none;">
+          <div id="processingInner" class="processing-bar-inner"></div>
         </div>
         </div>
         <!-- API URL is now hardcoded in index.js to avoid exposing it in the UI. -->

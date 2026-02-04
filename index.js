@@ -19,7 +19,7 @@
   const processingBar = document.querySelector('#processingBar');
   const processingInner = document.querySelector('#processingInner');
   // API URL is hardcoded to avoid displaying it in the UI
-  const API_URL = 'http://127.0.0.1:7860/direct-enhance';
+  const API_URL = 'https://abid1012-audio-enhancement.hf.space/direct-enhance';
   const downloadRow = $('#downloadRow');
   const downloadLink = $('#downloadLink');
   const enhancedAudio = $('#enhancedAudio');
@@ -257,15 +257,6 @@
         // hide upload progress and start processing indicator
         progressEl.style.display = 'none';
         processingBar.style.display = 'block';
-        // simple looping animation 0->100%
-        let w = 0;
-        const tick = () => {
-          if (processingBar.style.display === 'none') return; // stop when hidden
-          w = (w + 5) % 105;
-          processingInner.style.width = w + '%';
-          setTimeout(tick, 100);
-        };
-        tick();
       };
 
       xhr.onreadystatechange = () => {
@@ -280,7 +271,6 @@
       xhr.onload = () => {
         // stop processing indicator
         processingBar.style.display = 'none';
-        processingInner.style.width = '0%';
         if (xhr.status >= 200 && xhr.status < 300) {
           setStatus('Enhancement complete');
           const blob = xhr.response instanceof Blob ? xhr.response : new Blob([xhr.response]);
@@ -303,7 +293,6 @@
         // reset indicators
         progressEl.style.display = 'none';
         processingBar.style.display = 'none';
-        processingInner.style.width = '0%';
       });
 
       xhr.send(fd);
