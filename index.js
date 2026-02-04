@@ -13,6 +13,8 @@
   const stopEnhanceBtn = $('#stopEnhanceBtn');
   const statusEl = $('#status');
   const progressEl = $('#progress');
+  const processingBar = document.querySelector('#processingBar');
+  const processingInner = document.querySelector('#processingInner');
   // API URL is hardcoded to avoid displaying it in the UI
   const API_URL = 'http://127.0.0.1:7860/direct-enhance';
   const downloadRow = $('#downloadRow');
@@ -117,6 +119,12 @@
     setStatus('Uploading...');
     resetEnhanced();
 
+    // reset progress and processing bars
+    progressEl.style.display = 'none';
+    progressEl.value = 0;
+    processingBar.style.display = 'none';
+    processingInner.style.width = '0%';
+
     abortController = new AbortController();
 
     try {
@@ -141,7 +149,18 @@
         progressEl.value = 0;
       };
       xhr.onloadend = () => {
+        // hide upload progress and start processing indicator
         progressEl.style.display = 'none';
+        processingBar.style.display = 'block';
+        // simple looping animation 0->100%
+        let w = 0;
+        const tick = () => {
+          if (processingBar.style.display === 'none') return; // stop when hidden
+          w = (w + 5) % 105;
+          processingInner.style.width = w + '%';
+          setTimeout(tick, 100);
+        };
+        tick();
       };
 
       xhr.onreadystatechange = () => {
@@ -154,6 +173,9 @@
       xhr.onerror = () => { throw new Error('Network error'); };
 
       xhr.onload = () => {
+        // stop processing indicator
+        processingBar.style.display = 'none';
+        processingInner.style.width = '0%';
         if (xhr.status >= 200 && xhr.status < 300) {
           setStatus('Enhancement complete');
           const blob = xhr.response instanceof Blob ? xhr.response : new Blob([xhr.response]);
@@ -171,7 +193,13 @@
 
       // Hook abort controller to XHR
       const signal = abortController.signal;
-      signal.addEventListener('abort', () => xhr.abort());
+      signal.addEventListener('abort', () => {
+        xhr.abort();
+        // reset indicators
+        progressEl.style.display = 'none';
+        processingBar.style.display = 'none';
+        processingInner.style.width = '0%';
+      });
 
       xhr.send(fd);
       setStatus('Processing...');

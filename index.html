@@ -39,6 +39,11 @@
           <button id="playBtn" class="btn neutral" disabled>Play</button>
           <button id="pauseBtn" class="btn neutral" disabled>Pause</button>
         </div>
+        <div class="row">
+          <button id="recordBtn" class="btn">Record</button>
+          <button id="stopRecordBtn" class="btn secondary" disabled>Stop</button>
+          <span id="recordStatus" class="muted">Mic idle</span>
+        </div>
         <audio id="audio" controls style="width: 100%; margin-top: 8px;"></audio>
         <canvas id="visualizer" height="120"></canvas>
         <div class="muted" id="fileMeta"></div>
