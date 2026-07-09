@@ -1,0 +1,188 @@
+Project Flow: CrystalClear AI Audio Enhancer
+==============================================
+
+This repo contains a small “enhance audio” client. The main working build in this folder is the
+Vanilla HTML/CSS/JS web UI (no framework).
+
+What you see in the browser
+---------------------------
+The main entry is:
+- index.html
+- index.css
+- index.js
+
+index.html (UI)
+~~~~~~~~~~~~~~~
+1) Renders two cards/sections:
+   - Input Audio card
+     - <input type="file" id="fileInput">
+     - Play/Pause buttons (disabled until a file exists)
+     - Record/Stop recording buttons (microphone input)
+     - <audio id="audio"> for original audio
+     - <canvas id="visualizer"> waveform
+     - File metadata text (id="fileMeta")
+
+   - Enhancement card
+     - Enhance button (disabled until a file exists)
+     - Cancel button
+     - Upload progress bar (<progress id="progress">)
+     - Processing indicator bar (processingBar / processingInner)
+     - Result section:
+       - Download Enhanced link (<a id="downloadLink">)
+       - <audio id="enhancedAudio"> for playing the enhanced file
+
+2) Loads the JS logic:
+   - <script src="/index.js" defer>
+
+index.js (application logic)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The JS file wires up all behavior:
+- File selection and loading into the audio player
+- Web Audio visualization (waveform)
+- Optional microphone recording and visualization
+- Uploading the selected audio to the enhancement API
+- Handling the enhanced binary response and presenting playback/download
+
+A. Constants and state
+------------------------
+- API_URL is hardcoded in index.js:
+  - https://abid1012-audio-enhancement.hf.space/direct-enhance
+- The script keeps state for:
+  - currentFile (the selected/uploaded or recorded audio file)
+  - object URLs for playback/download
+  - upload/processing UI elements
+  - abortController for cancellation
+  - Web Audio nodes (audioCtx, analyser, etc.)
+  - MediaRecorder + mic stream for recording
+
+B. File selection flow
+-----------------------
+1) User picks a file in #fileInput.
+2) change event runs:
+   - currentFile is set to the selected file
+   - fileMeta is updated with name and size
+   - Play/Pause/Enhance buttons are enabled
+   - Any previous playback object URL is revoked
+   - A new object URL is created: currentObjectUrl = URL.createObjectURL(file)
+   - audioEl.src is set to that object URL
+
+After this step:
+- Original audio can be played.
+- Enhance can be clicked.
+
+C. Playback + visualization flow
+----------------------------------
+1) When the user clicks Play:
+   - audioEl fires 'play'
+   - ensureAudioGraph() creates a Web Audio graph if needed:
+     - audioCtx + analyser
+     - sourceNode = audioCtx.createMediaElementSource(audioEl)
+     - sourceNode -> analyser -> destination
+2) If the AudioContext is suspended, it resumes.
+3) A requestAnimationFrame loop starts drawing the waveform into #visualizer.
+
+The waveform is drawn by repeatedly calling:
+- analyser.getByteTimeDomainData(dataArray)
+and mapping values to y-coordinates.
+
+2) When paused/ended:
+- requestAnimationFrame loop is cancelled.
+
+D. Microphone recording flow (optional)
+-----------------------------------------
+1) User clicks Record.
+2) getUserMedia({audio:true}) requests microphone access.
+3) A MediaRecorder is created (mimeType: 'audio/webm').
+4) The waveform canvas is repurposed to visualize mic input using:
+   - audioCtx.createAnalyser()
+   - mediaStreamSource -> micAnalyser
+5) When stopping:
+   - mediaRecorder.stop() fires 'onstop'
+   - recorded chunks are combined into a Blob
+   - a File named 'recording.webm' is created
+   - the UI switches currentFile to that recorded file
+   - the <audio id="audio"> source is updated
+
+Cleanup after stop:
+- disconnect mic nodes
+- stop mediaStream tracks
+
+E. Enhancement flow (core behavior)
+------------------------------------
+Triggered by clicking #enhanceBtn.
+
+1) Guard checks
+   - if (!currentFile) return
+
+2) UI state before request
+   - setBusy(true)
+   - status: "Uploading..."
+   - resetEnhanced(): hides previous enhanced output and revokes old object URLs
+   - upload progress is reset and hidden
+   - processing indicator is hidden
+   - abortController = new AbortController() is created
+
+3) Build the request payload
+   - fd = new FormData()
+   - fd.append('file', currentFile, currentFile.name || 'input_audio.wav')
+   - The field name matches the backend expectation (same as curl -F "file=@...").
+
+4) Upload + progress tracking
+   - XMLHttpRequest is used instead of fetch so we can track upload progress.
+   - xhr.open('POST', API_URL)
+   - xhr.responseType = 'blob'
+   - xhr.upload.onprogress updates <progress id="progress">
+
+5) Processing indicator
+   - xhr.onloadend hides the upload progress
+   - processingBar.style.display = 'block'
+
+6) Response handling
+   - xhr.onload runs when the request finishes:
+     - processingBar hides
+     - if status is 2xx:
+       - status becomes "Enhancement complete"
+       - response blob becomes enhancedObjectUrl
+       - downloadLink.href is updated
+       - downloadRow is shown
+       - enhancedAudio.src is updated and shown
+     - else:
+       - status shows error code/status text
+
+7) Cancellation
+----------------
+Triggered by clicking #stopEnhanceBtn.
+
+- abortController.abort() is called.
+- The AbortController signal listener calls xhr.abort().
+- Indicators are hidden and UI is reset.
+
+Resulting behavior from the user perspective
+-----------------------------------------------
+1) Select a file (or record audio).
+2) Press Play to verify original audio and view the waveform.
+3) Press Enhance.
+4) Watch upload progress and processing indicator.
+5) After success:
+   - Download Enhanced becomes available
+   - Enhanced audio appears in the second player
+
+Notes / expected backend contract
+----------------------------------
+- Client sends:
+  - POST {API_URL}
+  - Content-Type: multipart/form-data (managed automatically by FormData)
+  - Form field name: file
+  - Value: audio file bytes (from file input or recording)
+
+- Client expects:
+  - A binary response (Blob)
+  - It does not heavily validate content-type; it just treats the response as audio.
+
+Flutter implementation (not executed by the web UI)
+---------------------------------------------------
+There is also a Flutter project folder (audio_enhancer_flutter/) in the workspace. The flow above describes the
+Vanilla web UI only.
+
+If you later wire the Flutter app, it will likely call the same backend endpoint and display controls similarly.
+
